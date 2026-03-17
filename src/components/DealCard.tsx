@@ -1,5 +1,5 @@
 import { Monicon } from '@monicon/native';
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Image, Dimensions } from 'react-native';
 
 import type { Deal } from '../types/deal';
@@ -31,6 +31,14 @@ const HORIZONTAL_CARD_WIDTH = (screenWidth - HORIZONTAL_CARD_PADDING - scale(20)
 const HORIZONTAL_IMAGE_WIDTH = HORIZONTAL_CARD_WIDTH - scale(16); // Card padding
 const HORIZONTAL_IMAGE_HEIGHT = HORIZONTAL_IMAGE_WIDTH * 0.64; // Maintain aspect ratio ~260:167
 const VERTICAL_IMAGE_SIZE = VERTICAL_CARD_WIDTH - scale(16); // Square image for vertical cards
+const HORIZONTAL_DISPLAY_SIZE = {
+  width: Math.round(HORIZONTAL_IMAGE_WIDTH),
+  height: Math.round(HORIZONTAL_IMAGE_HEIGHT),
+};
+const VERTICAL_DISPLAY_SIZE = {
+  width: Math.round(VERTICAL_IMAGE_SIZE),
+  height: Math.round(VERTICAL_IMAGE_SIZE),
+};
 
 export type { Deal };
 
@@ -57,6 +65,26 @@ const DealCard: React.FC<DealCardProps> = ({
   showDelete = false,
   onDelete,
 }) => {
+  const stableImageSource = useMemo(() => {
+    if (!deal.image) {
+      return null;
+    }
+
+    if (typeof deal.image === 'string') {
+      const trimmedImage = deal.image.trim();
+      if (!trimmedImage) {
+        return null;
+      }
+
+      return {
+        uri: trimmedImage,
+        cache: 'force-cache' as const,
+      };
+    }
+
+    return deal.image;
+  }, [deal.image]);
+
   const handleUpvote = (e?: any) => {
     e?.stopPropagation?.();
     onUpvote?.(deal.id);
@@ -97,10 +125,7 @@ const DealCard: React.FC<DealCardProps> = ({
   const getImageSource = () => {
     if (deal.imageVariants) {
       // Use OptimizedImage for database images with variants
-      // Dynamic sizing based on screen width
-      const displaySize = variant === 'horizontal'
-        ? { width: Math.round(HORIZONTAL_IMAGE_WIDTH), height: Math.round(HORIZONTAL_IMAGE_HEIGHT) }
-        : { width: Math.round(VERTICAL_IMAGE_SIZE), height: Math.round(VERTICAL_IMAGE_SIZE) };
+      const displaySize = variant === 'horizontal' ? HORIZONTAL_DISPLAY_SIZE : VERTICAL_DISPLAY_SIZE;
 
       return (
         <OptimizedImage
@@ -108,19 +133,16 @@ const DealCard: React.FC<DealCardProps> = ({
           componentType="deal"
           displaySize={displaySize}
           style={variant === 'horizontal' ? styles.horizontalImage : styles.verticalImage}
-          fallbackSource={typeof deal.image === 'string' && deal.image ? { uri: deal.image } : deal.image}
+          fallbackSource={stableImageSource}
         />
       );
-    } else if (deal.image) {
+    } else if (stableImageSource) {
       // Fallback to regular Image for static images or simple URIs
-      const imageSource = typeof deal.image === 'string'
-        ? { uri: deal.image }
-        : deal.image;
-
       return (
         <Image
-          source={imageSource}
+          source={stableImageSource}
           style={variant === 'horizontal' ? styles.horizontalImage : styles.verticalImage}
+          fadeDuration={0}
         />
       );
     }

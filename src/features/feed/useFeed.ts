@@ -60,7 +60,10 @@ const hasDealChangedForCacheSync = (cachedDeal: Deal, currentDeal: Deal): boolea
 
 export function useFeed(): FeedContext {
   const navigation = useNavigation();
-  const { getUpdatedDeal, clearUpdatedDeal, postAdded, setPostAdded } = useDealUpdate();
+  const getUpdatedDeal = useDealUpdate((state) => state.getUpdatedDeal);
+  const clearUpdatedDeal = useDealUpdate((state) => state.clearUpdatedDeal);
+  const postAdded = useDealUpdate((state) => state.postAdded);
+  const setPostAdded = useDealUpdate((state) => state.setPostAdded);
   const { cuisines, loading: cuisinesLoading } = useDataCache();
   const {
     selectedCoordinates,
@@ -342,6 +345,36 @@ export function useFeed(): FeedContext {
       }
     }, [syncDealsWithCache, getUpdatedDeal, clearUpdatedDeal]),
   );
+
+  useEffect(() => {
+    if (!postAdded) {
+      return;
+    }
+
+    let isActive = true;
+
+    const refreshAfterPost = async () => {
+      try {
+        const freshDeals = await dealCacheService.getDeals(true, selectedCoordinates || undefined);
+        if (!isActive) {
+          return;
+        }
+        setDeals(freshDeals);
+      } catch (error) {
+        console.error('Error refreshing feed after post upload:', error);
+      } finally {
+        if (isActive) {
+          setPostAdded(false);
+        }
+      }
+    };
+
+    void refreshAfterPost();
+
+    return () => {
+      isActive = false;
+    };
+  }, [postAdded, selectedCoordinates, setPostAdded]);
 
   // ----- Pull-to-refresh ----------------------------------------------------
   const onRefresh = useCallback(async () => {

@@ -8,6 +8,7 @@ import { STATIC } from '../ui/alf';
 
 import Header from './Header';
 import LocationModal from './LocationModal';
+import PostUploadProgressBar from './PostUploadProgressBar';
 
 interface FeedTabNavigatorProps {
   currentTab?: 'feed' | 'discover';
@@ -55,6 +56,8 @@ const FeedTabNavigator: React.FC<FeedTabNavigatorProps> = ({
         onLocationPress={handleLocationPress}
         currentLocation={currentLocation}
       />
+
+      <PostUploadProgressBar />
 
       {/* Current Screen Content */}
       <View style={styles.screenContainer}>

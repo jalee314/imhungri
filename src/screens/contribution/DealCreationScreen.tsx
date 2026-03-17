@@ -81,10 +81,17 @@ interface SearchRestaurant {
 interface DealCreationScreenProps {
   visible: boolean;
   onClose: () => void;
+  onSubmitNavigateToFeed?: () => void;
 }
 
-export default function DealCreationScreen({ visible, onClose }: DealCreationScreenProps) {
-  const { setPostAdded } = useDealUpdate();
+export default function DealCreationScreen({ visible, onClose, onSubmitNavigateToFeed }: DealCreationScreenProps) {
+  const {
+    setPostAdded,
+    startPostUpload,
+    setPostUploadProgress,
+    completePostUpload,
+    resetPostUpload,
+  } = useDealUpdate();
   const { categories, cuisines, loading: dataLoading } = useDataCache();
 
   // ── Form engine ──────────────────────────────────────────────────────────
@@ -120,8 +127,27 @@ export default function DealCreationScreen({ visible, onClose }: DealCreationScr
   const scrollViewRef = useRef<KeyboardAwareScrollView>(null);
   const detailsInputRef = useRef<TextInput>(null);
   const titleInputRef = useRef<TextInput>(null);
+  const uploadProgressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const uploadSuccessTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Reference to abort controller for cancelling in-flight search requests
   const searchAbortControllerRef = useRef<AbortController | null>(null);
+
+  const clearUploadTimers = useCallback(() => {
+    if (uploadProgressIntervalRef.current) {
+      clearInterval(uploadProgressIntervalRef.current);
+      uploadProgressIntervalRef.current = null;
+    }
+    if (uploadSuccessTimeoutRef.current) {
+      clearTimeout(uploadSuccessTimeoutRef.current);
+      uploadSuccessTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearUploadTimers();
+    };
+  }, [clearUploadTimers]);
 
   const loadUserData = async () => {
     try {
@@ -135,6 +161,8 @@ export default function DealCreationScreen({ visible, onClose }: DealCreationScr
   useEffect(() => {
     if (visible) {
       loadUserData();
+    } else {
+      setIsPreviewVisible(false);
     }
   }, [visible]);
 
@@ -475,6 +503,14 @@ export default function DealCreationScreen({ visible, onClose }: DealCreationScr
     }
 
     setIsPosting(true);
+    clearUploadTimers();
+    startPostUpload();
+
+    let progress = 0.08;
+    uploadProgressIntervalRef.current = setInterval(() => {
+      progress = Math.min(0.9, progress + 0.06);
+      setPostUploadProgress(progress);
+    }, 280);
 
     try {
       const { values } = form;
@@ -495,8 +531,20 @@ export default function DealCreationScreen({ visible, onClose }: DealCreationScr
       const profanityCheck = await checkDealContentForProfanity(dealData.title, dealData.description);
       if (!profanityCheck.success) {
         Alert.alert("Content Review", profanityCheck.error || "Content contains inappropriate language.");
+        clearUploadTimers();
+        resetPostUpload();
         setIsPosting(false);
         return;
+      }
+
+      setIsPreviewVisible(false);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+      if (onSubmitNavigateToFeed) {
+        onSubmitNavigateToFeed();
+      } else {
+        onClose();
       }
 
       const result = await createDeal(dealData);
@@ -504,35 +552,25 @@ export default function DealCreationScreen({ visible, onClose }: DealCreationScr
       if (result.success) {
         await ProfileCacheService.forceRefresh();
         setPostAdded(true);
+        clearUploadTimers();
+        completePostUpload();
 
-        Alert.alert(
-          "Success!",
-          "Your deal has been posted successfully!",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                // First close the preview screen
-                setIsPreviewVisible(false);
+        form.reset();
+        setOriginalImageUris([]);
+        setCropRegions([]);
 
-                // Clear the form after a brief delay
-                setTimeout(() => {
-                  form.reset();
-                  setOriginalImageUris([]);
-                  setCropRegions([]);
-
-                  // Then close the main modal
-                  onClose();
-                }, TIMING.closeDelay);
-              }
-            }
-          ]
-        );
+        uploadSuccessTimeoutRef.current = setTimeout(() => {
+          resetPostUpload();
+        }, 1000);
       } else {
+        clearUploadTimers();
+        resetPostUpload();
         Alert.alert("Error", result.error || "Failed to post deal. Please try again.");
       }
     } catch (error) {
       console.error('Error posting deal:', error);
+      clearUploadTimers();
+      resetPostUpload();
       Alert.alert("Error", "An unexpected error occurred. Please try again.");
     } finally {
       setIsPosting(false);
@@ -786,9 +824,9 @@ export default function DealCreationScreen({ visible, onClose }: DealCreationScr
         thumbnailIndex={form.values.thumbnailIndex}
         onClose={() => setIsPhotoReviewVisible(false)}
         onDone={(photos, thumbIdx, originals) => {
+          setIsPhotoReviewVisible(false);
           form.setFields({ imageUris: photos, thumbnailIndex: thumbIdx });
           setOriginalImageUris(originals);
-          setIsPhotoReviewVisible(false);
         }}
         onAddMore={() => {
           setIsPhotoReviewVisible(false);

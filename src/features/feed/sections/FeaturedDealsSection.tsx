@@ -7,7 +7,7 @@
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useCallback } from 'react';
 import { View, FlatList, TouchableOpacity } from 'react-native';
 
 import DealCard from '../../../components/DealCard';
@@ -30,10 +30,6 @@ const renderItemSeparator = () => <View style={{ width: 0 }} />;
 
 function FeaturedDealsSectionComponent({ deals, interactions }: FeaturedDealsSectionProps) {
   const navigation = useNavigation();
-  const imageVariantSignature = useMemo(
-    () => deals.map((deal) => deal.imageVariants?.cloudinary_id ?? '').join(','),
-    [deals],
-  );
 
   const renderCommunityDeal = useCallback(
     ({ item }: { item: Deal }) => (
@@ -97,11 +93,10 @@ function FeaturedDealsSectionComponent({ deals, interactions }: FeaturedDealsSec
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingLeft: 10.5, paddingRight: SPACING.md }}
         ItemSeparatorComponent={renderItemSeparator}
-        extraData={imageVariantSignature}
         initialNumToRender={4}
         maxToRenderPerBatch={4}
         windowSize={5}
-        removeClippedSubviews
+        removeClippedSubviews={false}
       />
     </>
   );

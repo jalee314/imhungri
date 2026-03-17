@@ -163,7 +163,7 @@ const FeedContainer: React.FC = () => {
         initialNumToRender={8}
         maxToRenderPerBatch={8}
         windowSize={7}
-        removeClippedSubviews
+        removeClippedSubviews={false}
       />
     </Box>
   );
