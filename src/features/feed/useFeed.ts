@@ -54,11 +54,75 @@ const hasDealChangedForCacheSync = (cachedDeal: Deal, currentDeal: Deal): boolea
   );
 };
 
+const areImageVariantsEqual = (left?: Deal['imageVariants'], right?: Deal['imageVariants']): boolean => {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+
+  return (
+    left.large === right.large &&
+    left.medium === right.medium &&
+    left.small === right.small &&
+    left.thumbnail === right.thumbnail
+  );
+};
+
+const canReuseDealReference = (previousDeal: Deal, nextDeal: Deal): boolean => {
+  return (
+    previousDeal.id === nextDeal.id &&
+    previousDeal.title === nextDeal.title &&
+    previousDeal.restaurant === nextDeal.restaurant &&
+    previousDeal.details === nextDeal.details &&
+    previousDeal.image === nextDeal.image &&
+    previousDeal.votes === nextDeal.votes &&
+    previousDeal.isUpvoted === nextDeal.isUpvoted &&
+    previousDeal.isDownvoted === nextDeal.isDownvoted &&
+    previousDeal.isFavorited === nextDeal.isFavorited &&
+    previousDeal.cuisine === nextDeal.cuisine &&
+    previousDeal.cuisineId === nextDeal.cuisineId &&
+    previousDeal.timeAgo === nextDeal.timeAgo &&
+    previousDeal.author === nextDeal.author &&
+    previousDeal.milesAway === nextDeal.milesAway &&
+    previousDeal.isAnonymous === nextDeal.isAnonymous &&
+    previousDeal.expirationDate === nextDeal.expirationDate &&
+    areImageVariantsEqual(previousDeal.imageVariants, nextDeal.imageVariants)
+  );
+};
+
+const reconcileDealsForRefresh = (previousDeals: Deal[], nextDeals: Deal[]): Deal[] => {
+  if (previousDeals.length === 0 || nextDeals.length === 0) {
+    return nextDeals;
+  }
+
+  const previousById = new Map(previousDeals.map((dealItem) => [dealItem.id, dealItem]));
+  let anyReferenceChanged = previousDeals.length !== nextDeals.length;
+
+  const mergedDeals = nextDeals.map((nextDeal) => {
+    const previousDeal = previousById.get(nextDeal.id);
+    if (!previousDeal) {
+      anyReferenceChanged = true;
+      return nextDeal;
+    }
+
+    if (canReuseDealReference(previousDeal, nextDeal)) {
+      return previousDeal;
+    }
+
+    anyReferenceChanged = true;
+    return nextDeal;
+  });
+
+  if (!anyReferenceChanged && mergedDeals.every((dealItem, index) => dealItem === previousDeals[index])) {
+    return previousDeals;
+  }
+
+  return mergedDeals;
+};
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useFeed(): FeedContext {
+export function useFeed(_refreshToken?: number): FeedContext {
   const navigation = useNavigation();
   const getUpdatedDeal = useDealUpdate((state) => state.getUpdatedDeal);
   const clearUpdatedDeal = useDealUpdate((state) => state.clearUpdatedDeal);
@@ -78,6 +142,7 @@ export function useFeed(): FeedContext {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const refreshInFlightRef = useRef(false);
 
   // Interaction handlers (optimistic updates)
   const { handleUpvote, handleDownvote, handleFavorite } = useFeedInteractionHandlers({
@@ -110,7 +175,7 @@ export function useFeed(): FeedContext {
       loadedDealsCount = cachedDeals.length;
       span.recordRoundTrip({ source: 'dealCacheService.getDeals', deals: cachedDeals.length });
       span.addPayload(cachedDeals);
-      setDeals(cachedDeals);
+      setDeals((previousDeals) => reconcileDealsForRefresh(previousDeals, cachedDeals));
       setError(null);
     } catch (err) {
       console.error('Error loading deals:', err);
@@ -296,7 +361,7 @@ export function useFeed(): FeedContext {
       console.log('📸 Feed: postAdded detected, syncing with fresh cache');
       const cachedDeals = dealCacheService.getCachedDeals();
       if (cachedDeals.length > 0) {
-        setDeals(cachedDeals);
+        setDeals((previousDeals) => reconcileDealsForRefresh(previousDeals, cachedDeals));
         setPostAdded(false);
         return cachedDeals;
       }
@@ -359,7 +424,7 @@ export function useFeed(): FeedContext {
         if (!isActive) {
           return;
         }
-        setDeals(freshDeals);
+        setDeals((previousDeals) => reconcileDealsForRefresh(previousDeals, freshDeals));
       } catch (error) {
         console.error('Error refreshing feed after post upload:', error);
       } finally {
@@ -377,26 +442,38 @@ export function useFeed(): FeedContext {
   }, [postAdded, selectedCoordinates, setPostAdded]);
 
   // ----- Pull-to-refresh ----------------------------------------------------
-  const onRefresh = useCallback(async () => {
+  const onRefresh = useCallback(async (options?: { showRefreshIndicator?: boolean }) => {
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    const showRefreshIndicator = options?.showRefreshIndicator ?? true;
+
+    refreshInFlightRef.current = true;
     const span = startPerfSpan('screen.feed.refresh', {
       hasCoordinates: Boolean(selectedCoordinates),
     });
     let spanClosed = false;
     let refreshedDealsCount = 0;
 
-    setRefreshing(true);
+    if (showRefreshIndicator) {
+      setRefreshing(true);
+    }
     try {
       const freshDeals = await dealCacheService.getDeals(true, selectedCoordinates || undefined);
       refreshedDealsCount = freshDeals.length;
       span.recordRoundTrip({ source: 'dealCacheService.getDeals.force', deals: freshDeals.length });
       span.addPayload(freshDeals);
-      setDeals(freshDeals);
+      setDeals((previousDeals) => reconcileDealsForRefresh(previousDeals, freshDeals));
     } catch (err) {
       console.error('Error refreshing deals:', err);
       span.end({ success: false, error: err });
       spanClosed = true;
     } finally {
-      setRefreshing(false);
+      if (showRefreshIndicator) {
+        setRefreshing(false);
+      }
+      refreshInFlightRef.current = false;
       if (!spanClosed) {
         span.end({ metadata: { dealsLoaded: refreshedDealsCount } });
       }

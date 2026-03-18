@@ -8,6 +8,7 @@
 import React from 'react';
 
 import BottomNavigation from '../../../components/BottomNavigation';
+import { useFeedUIStore } from '../../../stores/FeedUIStore';
 
 interface CustomTabBarProps {
   state: {
@@ -21,6 +22,9 @@ interface CustomTabBarProps {
 
 /** Tab mapping from index to tab name */
 const TAB_MAPPING = ['feed', 'search', 'contribute', 'favorites', 'profile'] as const;
+const FEED_RESELECT_DEBOUNCE_MS = 250;
+const FEED_RESELECT_STALE_LOCK_MS = 12000;
+const POST_REFRESH_COOLDOWN_MS = 600;
 
 /**
  * CustomTabBar - Custom tab bar using BottomNavigation
@@ -34,6 +38,7 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({ state, navigation })
   // Don't change activeTab if user is on contribute tab (which is index 2)
   const actualActiveTab = state.index === 2 ? 'feed' : TAB_MAPPING[state.index];
   const [lastActiveTab, setLastActiveTab] = React.useState('feed');
+  const lastFeedReselectPressTsRef = React.useRef(0);
 
   // Update last active tab when navigating to non-contribute tabs
   React.useEffect(() => {
@@ -57,6 +62,34 @@ export const CustomTabBar: React.FC<CustomTabBarProps> = ({ state, navigation })
         screen: 'ProfileMain',
         params: { viewUser: false, userId: undefined },
       });
+      return;
+    }
+
+    if (tab === 'feed' && tabIndex === state.index) {
+      const now = Date.now();
+      if (now - lastFeedReselectPressTsRef.current < FEED_RESELECT_DEBOUNCE_MS) {
+        return;
+      }
+
+      const feedUiState = useFeedUIStore.getState();
+      if (feedUiState.isReselectReloadInProgress) {
+        const lockStartedAt = feedUiState.reselectReloadStartedAt;
+        const isStaleLock = lockStartedAt !== null && now - lockStartedAt > FEED_RESELECT_STALE_LOCK_MS;
+        if (!isStaleLock) {
+          return;
+        }
+
+        feedUiState.endReselectReload();
+      }
+
+      const endedAt = feedUiState.reselectReloadEndedAt;
+      if (endedAt !== null && now - endedAt < POST_REFRESH_COOLDOWN_MS) {
+        return;
+      }
+
+      lastFeedReselectPressTsRef.current = now;
+      feedUiState.beginReselectReload();
+      feedUiState.requestReselectReload();
       return;
     }
     

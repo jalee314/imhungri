@@ -491,6 +491,27 @@ const styles = StyleSheet.create({
   },
 });
 
+const getImageUri = (image: Deal['image']): string => {
+  if (!image) return '';
+  if (typeof image === 'string') return image;
+  if (typeof image === 'object' && typeof image.uri === 'string') return image.uri;
+  if (typeof image === 'number') return String(image);
+  return '';
+};
+
+const areVariantsEqual = (prevVariants?: Deal['imageVariants'], nextVariants?: Deal['imageVariants']) => {
+  if (!prevVariants && !nextVariants) return true;
+  if (!prevVariants || !nextVariants) return false;
+
+  return (
+    prevVariants.original === nextVariants.original &&
+    prevVariants.large === nextVariants.large &&
+    prevVariants.medium === nextVariants.medium &&
+    prevVariants.small === nextVariants.small &&
+    prevVariants.thumbnail === nextVariants.thumbnail
+  );
+};
+
 // Memoize component with custom comparison
 const arePropsEqual = (prevProps: DealCardProps, nextProps: DealCardProps) => {
   return (
@@ -499,7 +520,8 @@ const arePropsEqual = (prevProps: DealCardProps, nextProps: DealCardProps) => {
     prevProps.deal.isUpvoted === nextProps.deal.isUpvoted &&
     prevProps.deal.isDownvoted === nextProps.deal.isDownvoted &&
     prevProps.deal.isFavorited === nextProps.deal.isFavorited &&
-    prevProps.deal.imageVariants?.cloudinary_id === nextProps.deal.imageVariants?.cloudinary_id &&
+    getImageUri(prevProps.deal.image) === getImageUri(nextProps.deal.image) &&
+    areVariantsEqual(prevProps.deal.imageVariants, nextProps.deal.imageVariants) &&
     prevProps.variant === nextProps.variant &&
     prevProps.showDelete === nextProps.showDelete &&
     // Include editable fields that users can modify

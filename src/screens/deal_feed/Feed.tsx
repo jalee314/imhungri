@@ -7,5 +7,16 @@
  * @see features/feed/FeedContainer
  */
 
-// Re-export the container as the default screen component
-export { default } from '../../features/feed/FeedContainer';
+import React from 'react';
+
+import FeedContainer from '../../features/feed/FeedContainer';
+
+interface FeedProps {
+	refreshToken?: number;
+}
+
+const Feed: React.FC<FeedProps> = ({ refreshToken }) => {
+	return <FeedContainer refreshToken={refreshToken} />;
+};
+
+export default Feed;

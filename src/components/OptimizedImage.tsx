@@ -71,8 +71,19 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
   networkType,
   ...props
 }) => {
-  const [currentVariant, setCurrentVariant] = useState<string>('');
+  const [currentVariant, setCurrentVariant] = useState<string>(() => {
+    const context: VariantContext = {
+      componentType,
+      displaySize,
+      devicePixelRatio: PixelRatio.get(),
+      screenWidth: Dimensions.get('window').width,
+      networkType,
+    };
+    return getOptimalImageVariant(variants, context);
+  });
   const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 2;
 
   const getSourceUri = (source: any): string => {
     if (!source) return '';
@@ -122,7 +133,30 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
     const optimalVariant = getOptimalImageVariant(variants, context);
     setCurrentVariant(optimalVariant);
     setImageError(false);
+    setRetryCount(0);
   }, [variants, componentType, displaySize, networkType]);
+
+  useEffect(() => {
+    if (!imageError || retryCount >= MAX_RETRIES) {
+      return;
+    }
+
+    const retryTimer = setTimeout(() => {
+      const context: VariantContext = {
+        componentType,
+        displaySize,
+        devicePixelRatio: PixelRatio.get(),
+        screenWidth: Dimensions.get('window').width,
+        networkType,
+      };
+
+      const optimalVariant = getOptimalImageVariant(variants, context);
+      setCurrentVariant(optimalVariant);
+      setImageError(false);
+    }, 900);
+
+    return () => clearTimeout(retryTimer);
+  }, [imageError, retryCount, variants, componentType, displaySize, networkType]);
 
   useEffect(() => {
     if (!computedImageSource) {
@@ -171,6 +205,7 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
     } else if (variants.original) {
       setCurrentVariant(variants.original);
     } else {
+      setRetryCount((current) => current + 1);
       setImageError(true);
     }
   };
@@ -184,6 +219,7 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
       {...props}
       source={displaySource}
       onError={handleError}
+      fadeDuration={0}
     />
   );
 };
