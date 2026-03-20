@@ -206,9 +206,11 @@ const PhotoReviewModal: React.FC<PhotoReviewModalProps> = ({
             
             wasVisible.current = true;
             prevPhotosLength.current = photos.length;
+            setIsProcessing(false);
         } else {
             wasVisible.current = false;
             prevPhotosLength.current = photos.length;
+            setIsProcessing(false);
         }
     }, [visible, photos, propOriginalPhotos]);
 
@@ -602,7 +604,28 @@ const PhotoReviewModal: React.FC<PhotoReviewModalProps> = ({
         }
     };
 
+    const cropImageWithTimeout = async (index: number, state: CropState, timeoutMs = 12000): Promise<string> => {
+        try {
+            return await Promise.race<string>([
+                cropImageWithState(index, state),
+                new Promise<string>((resolve) => {
+                    setTimeout(() => {
+                        console.warn(`Crop timed out for image ${index}; using existing image`);
+                        resolve(localPhotos[index]);
+                    }, timeoutMs);
+                }),
+            ]);
+        } catch (error) {
+            console.error('Crop with timeout failed:', error);
+            return localPhotos[index];
+        }
+    };
+
     const handleDone = async () => {
+        if (isProcessing) {
+            return;
+        }
+
         // Get current image's crop state directly from shared values (not async state)
         const currentState: CropState = {
             scale: scale.value,
@@ -644,7 +667,7 @@ const PhotoReviewModal: React.FC<PhotoReviewModalProps> = ({
                             translateX: 0,
                             translateY: 0,
                         };
-                        return await cropImageWithState(index, state);
+                        return await cropImageWithTimeout(index, state);
                     }
                     return photo;
                 })

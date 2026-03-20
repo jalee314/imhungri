@@ -34,7 +34,7 @@ export type AdminStackParamList = {
 // Feed Stack Param List (nested in Feed tab)
 // ============================================================================
 export type FeedStackParamList = {
-  'Feed Main': undefined;
+  'Feed Main': { refreshToken?: number } | undefined;
   CommunityUploaded: undefined;
 };
 

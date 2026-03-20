@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Image, ImageProps, PixelRatio, Dimensions } from 'react-native';
 
 import { getOptimalImageVariant, getImageUrl } from '../services/imageProcessingService';
@@ -71,8 +71,55 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
   networkType,
   ...props
 }) => {
-  const [currentVariant, setCurrentVariant] = useState<string>('');
+  const [currentVariant, setCurrentVariant] = useState<string>(() => {
+    const context: VariantContext = {
+      componentType,
+      displaySize,
+      devicePixelRatio: PixelRatio.get(),
+      screenWidth: Dimensions.get('window').width,
+      networkType,
+    };
+    return getOptimalImageVariant(variants, context);
+  });
   const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 2;
+
+  const getSourceUri = (source: any): string => {
+    if (!source) return '';
+    if (typeof source === 'number') return String(source);
+    if (typeof source === 'object' && typeof source.uri === 'string') return source.uri;
+    return '';
+  };
+
+  const computedImageSource = useMemo(() => {
+    if (imageError && fallbackSource) {
+      return fallbackSource;
+    }
+
+    const source = currentVariant && currentVariant.trim() !== ''
+      ? (() => {
+          const uri = getImageUrl(currentVariant);
+          if (!uri || uri.trim() === '') {
+            return fallbackSource;
+          }
+          return { uri };
+        })()
+      : fallbackSource;
+
+    if (!source || (typeof source === 'object' && 'uri' in source && (!source.uri || source.uri.trim() === ''))) {
+      return fallbackSource ?? null;
+    }
+
+    return source;
+  }, [currentVariant, fallbackSource, imageError]);
+
+  const [displaySource, setDisplaySource] = useState<any>(computedImageSource);
+  const displaySourceRef = useRef<any>(computedImageSource);
+
+  useEffect(() => {
+    displaySourceRef.current = displaySource;
+  }, [displaySource]);
   
   useEffect(() => {
     const context: VariantContext = {
@@ -86,7 +133,66 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
     const optimalVariant = getOptimalImageVariant(variants, context);
     setCurrentVariant(optimalVariant);
     setImageError(false);
+    setRetryCount(0);
   }, [variants, componentType, displaySize, networkType]);
+
+  useEffect(() => {
+    if (!imageError || retryCount >= MAX_RETRIES) {
+      return;
+    }
+
+    const retryTimer = setTimeout(() => {
+      const context: VariantContext = {
+        componentType,
+        displaySize,
+        devicePixelRatio: PixelRatio.get(),
+        screenWidth: Dimensions.get('window').width,
+        networkType,
+      };
+
+      const optimalVariant = getOptimalImageVariant(variants, context);
+      setCurrentVariant(optimalVariant);
+      setImageError(false);
+    }, 900);
+
+    return () => clearTimeout(retryTimer);
+  }, [imageError, retryCount, variants, componentType, displaySize, networkType]);
+
+  useEffect(() => {
+    if (!computedImageSource) {
+      if (!displaySourceRef.current) {
+        setDisplaySource(null);
+      }
+      return;
+    }
+
+    const nextUri = getSourceUri(computedImageSource);
+    const currentUri = getSourceUri(displaySourceRef.current);
+    if (nextUri && nextUri === currentUri) {
+      return;
+    }
+
+    let cancelled = false;
+    const applySource = () => {
+      if (!cancelled) {
+        setDisplaySource(computedImageSource);
+      }
+    };
+
+    if (nextUri.startsWith('http://') || nextUri.startsWith('https://')) {
+      Image.prefetch(nextUri)
+        .catch(() => undefined)
+        .finally(applySource);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    applySource();
+    return () => {
+      cancelled = true;
+    };
+  }, [computedImageSource]);
   
   const handleError = () => {
     // Try fallback to smaller variant
@@ -99,39 +205,21 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
     } else if (variants.original) {
       setCurrentVariant(variants.original);
     } else {
+      setRetryCount((current) => current + 1);
       setImageError(true);
     }
   };
   
-  if (imageError && fallbackSource) {
-    return <Image {...props} source={fallbackSource} />;
-  }
-  
-  // Validate variant before creating URI to prevent nil URIs
-  const imageSource = currentVariant && currentVariant.trim() !== ''
-    ? (() => {
-        const uri = getImageUrl(currentVariant);
-        // Double-check URI is valid before using it
-        if (!uri || uri.trim() === '') {
-          return fallbackSource;
-        }
-        return { uri };
-      })()
-    : fallbackSource;
-  
-  // Ensure we never pass invalid source to Image component
-  if (!imageSource || (typeof imageSource === 'object' && 'uri' in imageSource && (!imageSource.uri || imageSource.uri.trim() === ''))) {
-    if (fallbackSource) {
-      return <Image {...props} source={fallbackSource} />;
-    }
+  if (!displaySource) {
     return null;
   }
   
   return (
     <Image
       {...props}
-      source={imageSource}
+      source={displaySource}
       onError={handleError}
+      fadeDuration={0}
     />
   );
 };

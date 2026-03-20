@@ -56,6 +56,6 @@ export interface FeedContext {
   interactions: FeedInteractions;
   communityDeals: Deal[];
   dealsForYou: Deal[];
-  onRefresh: () => Promise<void>;
+  onRefresh: (options?: { showRefreshIndicator?: boolean }) => Promise<void>;
   loadDeals: () => Promise<void>;
 }

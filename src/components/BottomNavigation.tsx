@@ -209,6 +209,15 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
           setShowContributeModal(false);
           setContributePressed(false); // Reset pressed state when modal closes
         }}
+        onSubmitNavigateToFeed={() => {
+          setShowContributeModal(false);
+          setContributePressed(false);
+          if (onTabPress) {
+            onTabPress('feed');
+            return;
+          }
+          navigation.navigate('Feed' as never);
+        }}
       />
     </>
   );

@@ -8,6 +8,12 @@ export function useDealUpdate(): {
   clearUpdatedDeal: (dealId: string) => void;
   postAdded: boolean;
   setPostAdded: (added: boolean) => void;
+  postUploadStatus: 'idle' | 'uploading' | 'success';
+  postUploadProgress: number;
+  startPostUpload: () => void;
+  setPostUploadProgress: (progress: number) => void;
+  completePostUpload: () => void;
+  resetPostUpload: () => void;
 };
 export function useDealUpdate<T>(selector?: (state: any) => T) {
   if (selector) {
@@ -18,6 +24,24 @@ export function useDealUpdate<T>(selector?: (state: any) => T) {
   const clearUpdatedDeal = useDealUpdateStore((s) => s.clearUpdatedDeal);
   const postAdded = useDealUpdateStore((s) => s.postAdded);
   const setPostAdded = useDealUpdateStore((s) => s.setPostAdded);
+  const postUploadStatus = useDealUpdateStore((s) => s.postUploadStatus);
+  const postUploadProgress = useDealUpdateStore((s) => s.postUploadProgress);
+  const startPostUpload = useDealUpdateStore((s) => s.startPostUpload);
+  const setPostUploadProgress = useDealUpdateStore((s) => s.setPostUploadProgress);
+  const completePostUpload = useDealUpdateStore((s) => s.completePostUpload);
+  const resetPostUpload = useDealUpdateStore((s) => s.resetPostUpload);
 
-  return { updateDeal, getUpdatedDeal, clearUpdatedDeal, postAdded, setPostAdded };
+  return {
+    updateDeal,
+    getUpdatedDeal,
+    clearUpdatedDeal,
+    postAdded,
+    setPostAdded,
+    postUploadStatus,
+    postUploadProgress,
+    startPostUpload,
+    setPostUploadProgress,
+    completePostUpload,
+    resetPostUpload,
+  };
 }

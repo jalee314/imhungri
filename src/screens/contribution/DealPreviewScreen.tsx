@@ -68,7 +68,7 @@ interface User {
 interface DealPreviewScreenProps {
   visible: boolean;
   onClose: () => void;
-  onPost: () => void;
+  onPost: () => Promise<void> | void;
   dealTitle: string;
   dealDetails: string;
   imageUris: string[];
@@ -106,9 +106,16 @@ const DealPreviewScreen: React.FC<DealPreviewScreenProps> = ({
   const [imageViewerKey, setImageViewerKey] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+  const [isSubmitPressed, setIsSubmitPressed] = useState(false);
   const carouselRef = useRef<FlatList>(null);
   const slideAnim = useRef(new Animated.Value(screenWidth)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) {
+      setIsSubmitPressed(false);
+    }
+  }, [visible]);
 
   // ── Slide-in animation ────────────────────────────────────────────────────
   useEffect(() => {
@@ -136,6 +143,7 @@ const DealPreviewScreen: React.FC<DealPreviewScreenProps> = ({
   const handleAnimatedClose = useCallback(() => {
     if (isPosting || isAnimatingOut) return;
 
+    setImageViewVisible(false);
     setIsAnimatingOut(true);
 
     Animated.parallel([
@@ -155,6 +163,12 @@ const DealPreviewScreen: React.FC<DealPreviewScreenProps> = ({
       onClose();
     });
   }, [isPosting, isAnimatingOut, onClose, slideAnim, fadeAnim]);
+
+  useEffect(() => {
+    if (!visible || isPosting || isAnimatingOut) {
+      setImageViewVisible(false);
+    }
+  }, [visible, isPosting, isAnimatingOut]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const removeZipCode = (address: string) =>
@@ -215,10 +229,26 @@ const DealPreviewScreen: React.FC<DealPreviewScreenProps> = ({
   const scrollViewRef = useRef<ScrollView>(null);
 
   const openImageViewer = () => {
+    if (isPosting || isAnimatingOut || isSubmitPressed) {
+      return;
+    }
     setModalImageLoading(true);
     setModalImageError(false);
     setImageViewVisible(true);
     setImageViewerKey((prev) => prev + 1);
+  };
+
+  const handlePostPress = () => {
+    if (isPosting || isAnimatingOut || isSubmitPressed) {
+      return;
+    }
+
+    setIsSubmitPressed(true);
+    setImageViewVisible(false);
+
+    Promise.resolve(onPost()).finally(() => {
+      setIsSubmitPressed(false);
+    });
   };
 
   const handleImageLoad = (event: any) => {
@@ -281,12 +311,12 @@ const DealPreviewScreen: React.FC<DealPreviewScreenProps> = ({
                 backgroundColor: ALPHA_COLORS.brandPrimary80,
                 borderRadius: RADIUS.pill,
                 minWidth: 90,
-                opacity: isPosting ? OPACITY.disabled + 0.1 : OPACITY.full,
+                opacity: isPosting || isSubmitPressed ? OPACITY.disabled + 0.1 : OPACITY.full,
               }}
-              onPress={onPost}
-              disabled={isPosting}
+              onPress={handlePostPress}
+              disabled={isPosting || isSubmitPressed}
             >
-              {isPosting ? (
+              {isPosting || isSubmitPressed ? (
                 <ActivityIndicator size="small" color={STATIC.black} />
               ) : (
                 <Text
@@ -470,6 +500,7 @@ const DealPreviewScreen: React.FC<DealPreviewScreenProps> = ({
                           setCurrentImageIndex(index);
                           openImageViewer();
                         }}
+                        disabled={isPosting || isAnimatingOut || isSubmitPressed}
                         style={{ width: screenWidth - 48 }}
                       >
                         <Image
@@ -663,7 +694,7 @@ const DealPreviewScreen: React.FC<DealPreviewScreenProps> = ({
       {/* Full-screen image viewer */}
       {imageUris.length > 0 && imageUris[currentImageIndex] && (
         <Modal
-          visible={isImageViewVisible}
+          visible={visible && isImageViewVisible && !isPosting && !isAnimatingOut && !isSubmitPressed}
           transparent={true}
           onRequestClose={() => setImageViewVisible(false)}
         >
